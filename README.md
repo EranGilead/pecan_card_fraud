@@ -15,6 +15,14 @@ Local starter for experimenting with credit card fraud detection: data explorati
 - `reports/` figures/metrics from experiments
 
 ### Next steps
-- Pull/download anonymized credit card fraud dataset (e.g., Kaggle or public ULB dataset) into `data/raw/`.
+- Pull/download the anonymized credit card fraud dataset (`creditcard.csv`) from Kaggle: https://www.kaggle.com/mlg-ulb/creditcardfraud into `data/raw/`.
 - Start an EDA notebook in `notebooks/` to inspect class imbalance and basic stats.
 - Implement preprocessing and modeling pipelines in `src/` using `scikit-learn` + `imbalanced-learn`.
+
+### Quickstart EDA (script)
+Generate basic plots and summary to stdout:
+```bash
+source .venv/bin/activate
+python -m src.eda_creditcard --data-path data/raw/creditcard.csv --out-dir reports/figures
+```
+Outputs: class balance, amount distribution (log-scaled), time vs class histogram, and top feature correlations with the target in `reports/figures/`.

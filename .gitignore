@@ -10,7 +10,10 @@ __pycache__/
 
 # Data and outputs
 data/
+# Data and outputs
+data/
 reports/
+.history/
 
 # OS/Editor
 .DS_Store
