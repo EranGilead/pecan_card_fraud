@@ -18,6 +18,7 @@ from typing import Dict, Optional, Tuple
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import HistGradientBoostingClassifier
+from sklearn.inspection import permutation_importance
 from sklearn.metrics import average_precision_score, precision_recall_curve, roc_auc_score
 from sklearn.model_selection import train_test_split
 
@@ -133,6 +134,23 @@ def main(data_path: pathlib.Path, out_dir: pathlib.Path) -> None:
 
     metrics_path = out_dir / "metrics.json"
     metrics_path.write_text(json.dumps(metrics, indent=2))
+
+    # Feature importances dump
+    # Permutation importances on a sample of test to keep runtime reasonable
+    sample_size = min(5000, len(X_test))
+    perm = permutation_importance(
+        model,
+        X_test.sample(n=sample_size, random_state=42),
+        y_test.sample(n=sample_size, random_state=42),
+        n_repeats=3,
+        random_state=42,
+        n_jobs=1,
+        scoring="average_precision",
+    )
+    fi_df = pd.DataFrame({"feature": X.columns, "importance": perm.importances_mean})
+    fi_df.sort_values("importance", ascending=False).to_csv(out_dir / "feature_importances.csv", index=False)
+    print(f"[hgb] Saved feature importances to {out_dir / 'feature_importances.csv'}")
+
     print(f"[hgb] Saved metrics to {metrics_path}")
     return {"name": "hgb", "metrics": metrics, "params": best_val["params"]}
 
