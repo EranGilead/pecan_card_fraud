@@ -26,3 +26,17 @@ source .venv/bin/activate
 python -m src.eda_creditcard --data-path data/raw/creditcard.csv --out-dir reports/figures
 ```
 Outputs: class balance, amount distribution (log-scaled), time vs class histogram, and top feature correlations with the target in `reports/figures/`.
+
+### Modeling: logistic regression
+Train/evaluate baselines on `creditcard.csv`:
+```bash
+source .venv/bin/activate
+# Baseline: balanced class weight, single split
+python -m src.train_logreg --data-path data/creditcard.csv --out-dir reports/models --mode baseline
+# Grid search: class weight/C grid + validation threshold for precision>=0.9
+python -m src.train_logreg --data-path data/creditcard.csv --out-dir reports/models --mode gridsearch
+# Run both and create combined summary (models + metrics)
+python -m src.train_logreg --data-path data/creditcard.csv --out-dir reports/models --mode all
+```
+Outputs under `reports/models/<mode>/`: `metrics.json`, `coef.csv`.
+Combined summary: `reports/models/experiments_summary.json` with model paths and metrics.

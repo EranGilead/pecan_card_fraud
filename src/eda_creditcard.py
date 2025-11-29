@@ -17,6 +17,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
 
 
 def load_data(path: pathlib.Path) -> pd.DataFrame:
@@ -150,6 +152,35 @@ def plot_feature_correlations(
     return top_corr
 
 
+def plot_pca_scatter(df: pd.DataFrame, out_dir: pathlib.Path, max_points: int = 20000) -> None:
+    """2D PCA scatter of standardized features to visualize class separation."""
+    features = df.drop(columns=["Class"], errors="ignore")
+    if features.empty:
+        return
+    sample = df if len(df) <= max_points else df.sample(n=max_points, random_state=42)
+    X = sample.drop(columns=["Class"])
+    y = sample["Class"]
+    X_scaled = StandardScaler().fit_transform(X)
+    comps = PCA(n_components=2, random_state=42).fit_transform(X_scaled)
+    plot_df = pd.DataFrame({"PC1": comps[:, 0], "PC2": comps[:, 1], "Class": y.replace({0: "Legit", 1: "Fraud"})})
+    plt.figure(figsize=(8, 6))
+    ax = sns.scatterplot(
+        data=plot_df,
+        x="PC1",
+        y="PC2",
+        hue="Class",
+        palette={"Legit": "#4a90e2", "Fraud": "#d0021b"},
+        alpha=0.25,
+        s=10,
+    )
+    ax.set_title(f"PCA (2D) | {len(sample):,} points")
+    plt.tight_layout()
+    out_path = out_dir / "pca_scatter.png"
+    plt.savefig(out_path, dpi=200)
+    plt.close()
+    print(f"Saved {out_path}")
+
+
 def write_summary(out_dir: pathlib.Path, summary_text: str, top_corr: pd.Series) -> None:
     """Write a concise summary of key findings to summary.txt."""
     lines = [summary_text, "\nTop feature correlations with fraud (abs):"]
@@ -169,6 +200,7 @@ def run_eda(data_path: pathlib.Path, out_dir: pathlib.Path) -> None:
     plot_amount_distribution(df, out_dir)
     plot_time_by_class(df, out_dir)
     top_corr = plot_feature_correlations(df, out_dir)
+    plot_pca_scatter(df, out_dir)
     write_summary(out_dir, summary_text, top_corr)
 
 
