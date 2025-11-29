@@ -37,6 +37,8 @@ python -m src.train_logreg --data-path data/creditcard.csv --out-dir reports/mod
 python -m src.train_logreg --data-path data/creditcard.csv --out-dir reports/models --mode gridsearch
 # Run both and create combined summary (models + metrics)
 python -m src.train_logreg --data-path data/creditcard.csv --out-dir reports/models --mode all
+# Gradient boosting baseline (HistGradientBoostingClassifier) with threshold tuned for precision>=0.9
+python -m src.train_hgb --data-path data/creditcard.csv --out-dir reports/models/hgb
 ```
 Outputs under `reports/models/<mode>/`: `metrics.json`, `coef.csv`.
 Combined summary: `reports/models/experiments_summary.json` with model paths and metrics.
