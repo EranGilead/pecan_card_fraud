@@ -27,6 +27,8 @@ from sklearn.metrics import average_precision_score, precision_recall_curve, roc
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
+from imblearn.over_sampling import SMOTE
+from imblearn.pipeline import Pipeline as ImbPipeline
 
 
 def load_data(path: pathlib.Path) -> Tuple[pd.DataFrame, pd.Series]:
@@ -125,6 +127,52 @@ def save_coefficients(model: Pipeline, feature_names: pd.Index, out_path: pathli
     coef_df.to_csv(out_path, index=False)
 
 
+def run_smote(data_path: pathlib.Path, out_dir: pathlib.Path) -> Dict:
+    """Baseline with SMOTE oversampling on training data."""
+    X, y = load_data(data_path)
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=42, stratify=y
+    )
+    num_features = X.columns.tolist()
+    preprocessor = ColumnTransformer(
+        transformers=[("num", StandardScaler(), num_features)],
+        remainder="drop",
+    )
+    pipe = ImbPipeline(
+        steps=[
+            ("preprocess", preprocessor),
+            ("smote", SMOTE(random_state=42)),
+            (
+                "model",
+                LogisticRegression(
+                    penalty="l2",
+                    C=1.0,
+                    max_iter=500,
+                    class_weight=None,  # rely on SMOTE
+                    n_jobs=1,
+                ),
+            ),
+        ]
+    )
+    pipe.fit(X_train, y_train)
+    scores = pipe.predict_proba(X_test)[:, 1]
+    metrics = {
+        "roc_auc": float(roc_auc_score(y_test, scores)),
+        "pr_auc": float(average_precision_score(y_test, scores)),
+        "recall_at_prec90": evaluate_with_recall_at_prec(y_test, scores, precision_target=0.9),
+    }
+    metrics.update(top_k_metrics(y_test.to_numpy(), scores, k=100))
+    metrics.update({"positives": int(y_test.sum()), "negatives": int((1 - y_test).sum())})
+    metrics.update({"n_features": len(num_features)})
+    out_dir.mkdir(parents=True, exist_ok=True)
+    metrics_path = out_dir / "metrics.json"
+    metrics_path.write_text(json.dumps(metrics, indent=2))
+    save_coefficients(pipe, X.columns, out_dir / "coef.csv")  # coef meaningful post-scaling
+    print(f"[smote] Saved metrics to {metrics_path}")
+    print(f"[smote] Saved coefficients to {out_dir / 'coef.csv'}")
+    return {"name": "smote", "metrics": metrics}
+
+
 def run_gridsearch(data_path: pathlib.Path, out_dir: pathlib.Path) -> None:
     """Grid search over class weights/C, pick threshold for precision>=0.9 on val."""
     X, y = load_data(data_path)
@@ -218,16 +266,25 @@ def run_baseline(data_path: pathlib.Path, out_dir: pathlib.Path) -> None:
 
 
 def run_all(data_path: pathlib.Path, out_dir: pathlib.Path) -> None:
-    """Run both baseline and gridsearch, saving a combined summary."""
+    """Run baseline, gridsearch, smote, saving/merging a combined summary."""
+    summary_path = out_dir / "experiments_summary.json"
+    if summary_path.exists():
+        summary = json.loads(summary_path.read_text())
+    else:
+        summary = {"experiments": {}}
+
     baseline_res = run_baseline(data_path, out_dir / "baseline")
     grid_res = run_gridsearch(data_path, out_dir / "gridsearch")
-    summary = {
-        "experiments": {
+    smote_res = run_smote(data_path, out_dir / "smote")
+
+    summary.setdefault("experiments", {})
+    summary["experiments"].update(
+        {
             baseline_res["name"]: baseline_res,
             grid_res["name"]: grid_res,
+            smote_res["name"]: smote_res,
         }
-    }
-    summary_path = out_dir / "experiments_summary.json"
+    )
     summary_path.write_text(json.dumps(summary, indent=2))
     print(f"[all] Wrote combined summary to {summary_path}")
 
@@ -240,14 +297,16 @@ if __name__ == "__main__":
     parser.add_argument("--out-dir", type=pathlib.Path, default=pathlib.Path("reports/models"))
     parser.add_argument(
         "--mode",
-        choices=["baseline", "gridsearch", "all"],
+        choices=["baseline", "gridsearch", "smote", "all"],
         default="gridsearch",
-        help="baseline: balanced class weight, no threshold tuning; gridsearch: weight/C grid + threshold at prec>=0.9",
+        help="baseline: balanced class weight; gridsearch: weight/C grid + threshold at prec>=0.9; smote: oversample minority; all: run baseline+gridsearch+smote",
     )
     args = parser.parse_args()
     if args.mode == "baseline":
         run_baseline(args.data_path, args.out_dir / "baseline")
     elif args.mode == "gridsearch":
         run_gridsearch(args.data_path, args.out_dir / "gridsearch")
+    elif args.mode == "smote":
+        run_smote(args.data_path, args.out_dir / "smote")
     else:
         run_all(args.data_path, args.out_dir)

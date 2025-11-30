@@ -35,6 +35,8 @@ source .venv/bin/activate
 python -m src.train_logreg --data-path data/creditcard.csv --out-dir reports/models --mode baseline
 # Grid search: class weight/C grid + validation threshold for precision>=0.9
 python -m src.train_logreg --data-path data/creditcard.csv --out-dir reports/models --mode gridsearch
+# SMOTE oversampling: apply SMOTE on train split then logreg
+python -m src.train_logreg --data-path data/creditcard.csv --out-dir reports/models --mode smote
 # Run both and create combined summary (models + metrics)
 python -m src.train_logreg --data-path data/creditcard.csv --out-dir reports/models --mode all
 # Gradient boosting baseline (HistGradientBoostingClassifier) with threshold tuned for precision>=0.9
