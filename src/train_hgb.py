@@ -19,10 +19,9 @@ import numpy as np
 import pandas as pd
 from sklearn.ensemble import HistGradientBoostingClassifier
 from sklearn.inspection import permutation_importance
-from sklearn.metrics import average_precision_score, precision_recall_curve, roc_auc_score
+from sklearn.metrics import average_precision_score
 from sklearn.model_selection import train_test_split
-from src.tools import add_cost_metrics, evaluate_scores, find_threshold_for_precision, top_k_metrics
-from src.tools import add_cost_metrics
+from src.tools import evaluate_scores, find_threshold_for_precision
 
 
 def load_data(path: pathlib.Path) -> Tuple[pd.DataFrame, pd.Series]:

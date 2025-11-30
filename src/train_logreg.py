@@ -62,37 +62,6 @@ def train_logreg(
     return pipe, {"n_features": len(num_features)}
 
 
-def evaluate(
-    model: Pipeline,
-    X_test: pd.DataFrame,
-    y_test: pd.Series,
-    threshold: Optional[float] = None,
-    amounts: Optional[pd.Series] = None,
-) -> Dict[str, float]:
-    """Compute AUCs, retrieval metrics, costs, and optional thresholded precision/recall."""
-    scores = model.predict_proba(X_test)[:, 1]
-    metrics = {
-        "roc_auc": float(roc_auc_score(y_test, scores)),
-        "pr_auc": float(average_precision_score(y_test, scores)),
-    }
-    metrics.update(top_k_metrics(y_test.to_numpy(), scores, k=100))
-    metrics.update({"positives": int(y_test.sum()), "negatives": int((1 - y_test).sum())})
-    if threshold is not None:
-        preds = (scores >= threshold).astype(int)
-        tp = int(((preds == 1) & (y_test == 1)).sum())
-        fp = int(((preds == 1) & (y_test == 0)).sum())
-        fn = int(((preds == 0) & (y_test == 1)).sum())
-        precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
-        recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
-        metrics.update({"precision_at_threshold": precision, "recall_at_threshold": recall})
-        add_cost_metrics(metrics, y_test, preds, amounts, threshold_used=threshold)
-    elif amounts is not None:
-        # default threshold 0.5 if none provided for cost accounting
-        preds = (scores >= 0.5).astype(int)
-        add_cost_metrics(metrics, y_test, preds, amounts, threshold_used=0.5)
-    return metrics
-
-
 def evaluate_with_recall_at_prec(y_true: pd.Series, scores: np.ndarray, precision_target: float) -> float:
     """Recall at the best threshold achieving at least the target precision."""
     precision, recall, _ = precision_recall_curve(y_true, scores)
@@ -156,7 +125,7 @@ def run_smote(data_path: pathlib.Path, out_dir: pathlib.Path) -> Dict:
     return {"name": "smote", "metrics": metrics}
 
 
-def run_gridsearch(data_path: pathlib.Path, out_dir: pathlib.Path) -> None:
+def run_gridsearch(data_path: pathlib.Path, out_dir: pathlib.Path) -> dict:
     """Grid search over class weights/C, pick threshold for precision>=0.9 on val."""
     X, y = load_data(data_path)
     X_trainval, X_test, y_trainval, y_test = train_test_split(
@@ -229,7 +198,7 @@ def run_gridsearch(data_path: pathlib.Path, out_dir: pathlib.Path) -> None:
     return {"name": "gridsearch", "metrics": test_metrics}
 
 
-def run_baseline(data_path: pathlib.Path, out_dir: pathlib.Path) -> None:
+def run_baseline(data_path: pathlib.Path, out_dir: pathlib.Path) -> dict:
     """Baseline: balanced class weight, C=1, single train/test split."""
     X, y = load_data(data_path)
     X_train, X_test, y_train, y_test = train_test_split(
