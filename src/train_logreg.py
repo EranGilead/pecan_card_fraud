@@ -23,12 +23,13 @@ import numpy as np
 import pandas as pd
 from sklearn.compose import ColumnTransformer
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import average_precision_score, precision_recall_curve, roc_auc_score
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from imblearn.over_sampling import SMOTE
 from imblearn.pipeline import Pipeline as ImbPipeline
+from src.tools import evaluate_scores, find_threshold_for_precision, top_k_metrics
+from sklearn.metrics import precision_recall_curve, average_precision_score
 
 
 def load_data(path: pathlib.Path) -> Tuple[pd.DataFrame, pd.Series]:
@@ -38,30 +39,6 @@ def load_data(path: pathlib.Path) -> Tuple[pd.DataFrame, pd.Series]:
     X = df.drop(columns=["Class"])
     y = df["Class"]
     return X, y
-
-
-def find_threshold_for_precision(
-    y_true: np.ndarray, y_score: np.ndarray, precision_target: float
-) -> Tuple[Optional[float], float, float]:
-    """Find threshold achieving precision >= target with maximum recall."""
-    precision, recall, thresholds = precision_recall_curve(y_true, y_score)
-    valid = np.where(precision >= precision_target)[0]
-    if len(valid) == 0:
-        return None, 0.0, 0.0
-    best_idx = valid[np.argmax(recall[valid])]
-    # thresholds array is len-1 of precision/recall; guard for edge case
-    thr = thresholds[best_idx] if best_idx < len(thresholds) else thresholds[-1]
-    return float(thr), float(precision[best_idx]), float(recall[best_idx])
-
-
-def top_k_metrics(y_true: np.ndarray, y_score: np.ndarray, k: int = 100) -> Dict[str, float]:
-    """Compute precision and recall at top-k highest scores."""
-    k = min(k, len(y_score))
-    idx = np.argsort(y_score)[::-1][:k]
-    top_true = y_true[idx]
-    precision_at_k = float(top_true.mean())
-    recall_at_k = float(top_true.sum() / y_true.sum()) if y_true.sum() > 0 else 0.0
-    return {"precision_at_k": precision_at_k, "recall_at_k": recall_at_k, "k": float(k)}
 
 
 def train_logreg(
@@ -90,8 +67,9 @@ def evaluate(
     X_test: pd.DataFrame,
     y_test: pd.Series,
     threshold: Optional[float] = None,
+    amounts: Optional[pd.Series] = None,
 ) -> Dict[str, float]:
-    """Compute AUCs, retrieval metrics, and optional thresholded precision/recall."""
+    """Compute AUCs, retrieval metrics, costs, and optional thresholded precision/recall."""
     scores = model.predict_proba(X_test)[:, 1]
     metrics = {
         "roc_auc": float(roc_auc_score(y_test, scores)),
@@ -107,6 +85,11 @@ def evaluate(
         precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
         recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
         metrics.update({"precision_at_threshold": precision, "recall_at_threshold": recall})
+        add_cost_metrics(metrics, y_test, preds, amounts, threshold_used=threshold)
+    elif amounts is not None:
+        # default threshold 0.5 if none provided for cost accounting
+        preds = (scores >= 0.5).astype(int)
+        add_cost_metrics(metrics, y_test, preds, amounts, threshold_used=0.5)
     return metrics
 
 
@@ -156,13 +139,13 @@ def run_smote(data_path: pathlib.Path, out_dir: pathlib.Path) -> Dict:
     )
     pipe.fit(X_train, y_train)
     scores = pipe.predict_proba(X_test)[:, 1]
-    metrics = {
-        "roc_auc": float(roc_auc_score(y_test, scores)),
-        "pr_auc": float(average_precision_score(y_test, scores)),
-        "recall_at_prec90": evaluate_with_recall_at_prec(y_test, scores, precision_target=0.9),
-    }
-    metrics.update(top_k_metrics(y_test.to_numpy(), scores, k=100))
-    metrics.update({"positives": int(y_test.sum()), "negatives": int((1 - y_test).sum())})
+    metrics = evaluate_scores(
+        y_test,
+        scores,
+        threshold=0.5,
+        amounts=X_test.get("Amount"),
+    )
+    metrics.update({"recall_at_prec90": evaluate_with_recall_at_prec(y_test, scores, precision_target=0.9)})
     metrics.update({"n_features": len(num_features)})
     out_dir.mkdir(parents=True, exist_ok=True)
     metrics_path = out_dir / "metrics.json"
@@ -220,7 +203,13 @@ def run_gridsearch(data_path: pathlib.Path, out_dir: pathlib.Path) -> None:
     final_model, info = train_logreg(
         X_trainval, y_trainval, class_weight=best_class_weight, C=best["C"]
     )
-    test_metrics = evaluate(final_model, X_test, y_test, threshold=best["threshold"])
+    scores = final_model.predict_proba(X_test)[:, 1]
+    test_metrics = evaluate_scores(
+        y_test,
+        scores,
+        threshold=best["threshold"],
+        amounts=X_test.get("Amount"),
+    )
     test_metrics.update(
         {
             "recall_at_prec90_val": best["recall_at_prec90"],
@@ -248,13 +237,8 @@ def run_baseline(data_path: pathlib.Path, out_dir: pathlib.Path) -> None:
     )
     model, info = train_logreg(X_train, y_train, class_weight="balanced", C=1.0)
     scores = model.predict_proba(X_test)[:, 1]
-    metrics = {
-        "roc_auc": float(roc_auc_score(y_test, scores)),
-        "pr_auc": float(average_precision_score(y_test, scores)),
-        "recall_at_prec90": evaluate_with_recall_at_prec(y_test, scores, precision_target=0.9),
-    }
-    metrics.update(top_k_metrics(y_test.to_numpy(), scores, k=100))
-    metrics.update({"positives": int(y_test.sum()), "negatives": int((1 - y_test).sum())})
+    metrics = evaluate_scores(y_test, scores, threshold=0.5, amounts=X_test.get("Amount"))
+    metrics.update({"recall_at_prec90": evaluate_with_recall_at_prec(y_test, scores, precision_target=0.9)})
     metrics.update(info)
     out_dir.mkdir(parents=True, exist_ok=True)
     metrics_path = out_dir / "metrics.json"

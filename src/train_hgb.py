@@ -21,6 +21,8 @@ from sklearn.ensemble import HistGradientBoostingClassifier
 from sklearn.inspection import permutation_importance
 from sklearn.metrics import average_precision_score, precision_recall_curve, roc_auc_score
 from sklearn.model_selection import train_test_split
+from src.tools import add_cost_metrics, evaluate_scores, find_threshold_for_precision, top_k_metrics
+from src.tools import add_cost_metrics
 
 
 def load_data(path: pathlib.Path) -> Tuple[pd.DataFrame, pd.Series]:
@@ -30,49 +32,6 @@ def load_data(path: pathlib.Path) -> Tuple[pd.DataFrame, pd.Series]:
     X = df.drop(columns=["Class"])
     y = df["Class"]
     return X, y
-
-
-def top_k_metrics(y_true: np.ndarray, y_score: np.ndarray, k: int = 100) -> Dict[str, float]:
-    k = min(k, len(y_score))
-    idx = np.argsort(y_score)[::-1][:k]
-    top_true = y_true[idx]
-    precision_at_k = float(top_true.mean())
-    recall_at_k = float(top_true.sum() / y_true.sum()) if y_true.sum() > 0 else 0.0
-    return {"precision_at_k": precision_at_k, "recall_at_k": recall_at_k, "k": float(k)}
-
-
-def find_threshold_for_precision(
-    y_true: np.ndarray, y_score: np.ndarray, precision_target: float
-) -> Tuple[Optional[float], float, float]:
-    precision, recall, thresholds = precision_recall_curve(y_true, y_score)
-    valid = np.where(precision >= precision_target)[0]
-    if len(valid) == 0:
-        return None, 0.0, 0.0
-    best_idx = valid[np.argmax(recall[valid])]
-    thr = thresholds[best_idx] if best_idx < len(thresholds) else thresholds[-1]
-    return float(thr), float(precision[best_idx]), float(recall[best_idx])
-
-
-def evaluate(
-    y_true: pd.Series,
-    y_score: np.ndarray,
-    threshold: Optional[float] = None,
-) -> Dict[str, float]:
-    metrics = {
-        "roc_auc": float(roc_auc_score(y_true, y_score)),
-        "pr_auc": float(average_precision_score(y_true, y_score)),
-    }
-    metrics.update(top_k_metrics(y_true.to_numpy(), y_score, k=100))
-    metrics.update({"positives": int(y_true.sum()), "negatives": int((1 - y_true).sum())})
-    if threshold is not None:
-        preds = (y_score >= threshold).astype(int)
-        tp = int(((preds == 1) & (y_true == 1)).sum())
-        fp = int(((preds == 1) & (y_true == 0)).sum())
-        fn = int(((preds == 0) & (y_true == 1)).sum())
-        precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
-        recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
-        metrics.update({"precision_at_threshold": precision, "recall_at_threshold": recall})
-    return metrics
 
 
 def train_and_select(
@@ -121,7 +80,12 @@ def main(data_path: pathlib.Path, out_dir: pathlib.Path) -> None:
 
     model, best_val, meta = train_and_select(X_train, y_train, X_val, y_val, precision_target=0.9)
     test_scores = model.predict_proba(X_test)[:, 1]
-    metrics = evaluate(y_test, test_scores, threshold=best_val["threshold"])
+    metrics = evaluate_scores(
+        y_test,
+        test_scores,
+        threshold=best_val["threshold"],
+        amounts=X_test.get("Amount"),
+    )
     metrics.update(
         {
             "val_precision_at_threshold": best_val["precision"],
