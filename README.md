@@ -41,6 +41,8 @@ python -m src.train_logreg --data-path data/creditcard.csv --out-dir reports/mod
 python -m src.train_logreg --data-path data/creditcard.csv --out-dir reports/models --mode all
 # Gradient boosting baseline (HistGradientBoostingClassifier) with threshold tuned for precision>=0.9
 python -m src.train_hgb --data-path data/creditcard.csv --out-dir reports/models/hgb
+# XGBoost baseline with validation threshold for precision>=0.9
+python -m src.train_xgb --data-path data/creditcard.csv --out-dir reports/models/xgb
 ```
 Outputs under `reports/models/<mode>/`: `metrics.json`, `coef.csv`.
 Combined summary: `reports/models/experiments_summary.json` with model paths and metrics.
