@@ -25,6 +25,14 @@ from src.tools import evaluate_scores, find_threshold_for_precision
 
 
 def load_data(path: pathlib.Path) -> Tuple[pd.DataFrame, pd.Series]:
+    """Load dataset and split features/labels.
+
+    Args:
+        path: Path to creditcard.csv.
+
+    Returns:
+        Tuple of (X, y) where X excludes Class and y is the target.
+    """
     df = pd.read_csv(path)
     if "Class" not in df.columns:
         raise ValueError("Expected 'Class' column.")
@@ -40,6 +48,18 @@ def train_and_select(
     y_val: pd.Series,
     precision_target: float = 0.9,
 ) -> Tuple[HistGradientBoostingClassifier, Dict[str, float], Dict[str, float]]:
+    """Fit HGB over a small grid and select threshold for target precision.
+
+    Args:
+        X_train: Training features.
+        y_train: Training labels.
+        X_val: Validation features.
+        y_val: Validation labels.
+        precision_target: Precision level to satisfy on validation.
+
+    Returns:
+        (best_model, best_stats, meta) where best_stats contains threshold/precision/recall.
+    """
     grid = [
         {"learning_rate": 0.05, "max_depth": 3, "max_iter": 400},
         {"learning_rate": 0.1, "max_depth": 3, "max_iter": 300},
@@ -67,7 +87,7 @@ def train_and_select(
     return best_model, best, {"precision_target": precision_target}
 
 
-def main(data_path: pathlib.Path, out_dir: pathlib.Path) -> None:
+def main(data_path: pathlib.Path, out_dir: pathlib.Path) -> dict:
     out_dir.mkdir(parents=True, exist_ok=True)
     X, y = load_data(data_path)
     X_trainval, X_test, y_trainval, y_test = train_test_split(

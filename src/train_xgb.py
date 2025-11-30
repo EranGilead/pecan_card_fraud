@@ -24,6 +24,14 @@ from src.tools import evaluate_scores, find_threshold_for_precision
 
 
 def load_data(path: pathlib.Path) -> Tuple[pd.DataFrame, pd.Series]:
+    """Load dataset and split features/labels.
+
+    Args:
+        path: Path to creditcard.csv.
+
+    Returns:
+        Tuple of (X, y) where X excludes Class and y is the target.
+    """
     df = pd.read_csv(path)
     if "Class" not in df.columns:
         raise ValueError("Expected 'Class' column.")
@@ -60,6 +68,18 @@ def train_and_select(
     y_val: pd.Series,
     precision_target: float = 0.9,
 ) -> Tuple[XGBClassifier, Dict[str, float]]:
+    """Train XGB models over a small grid and pick threshold for target precision.
+
+    Args:
+        X_train: Training features.
+        y_train: Training labels.
+        X_val: Validation features.
+        y_val: Validation labels.
+        precision_target: Precision level to satisfy on validation.
+
+    Returns:
+        (best_model, best_stats) where best_stats has threshold/precision/recall/params.
+    """
     neg, pos = (y_train == 0).sum(), (y_train == 1).sum()
     base_spw = neg / pos if pos > 0 else 1.0
     grid = [

@@ -33,6 +33,14 @@ from sklearn.metrics import precision_recall_curve, average_precision_score
 
 
 def load_data(path: pathlib.Path) -> Tuple[pd.DataFrame, pd.Series]:
+    """Load dataset and split features/labels.
+
+    Args:
+        path: Path to creditcard.csv.
+
+    Returns:
+        Tuple of (X, y) where X excludes the Class column and y is the target.
+    """
     df = pd.read_csv(path)
     if "Class" not in df.columns:
         raise ValueError("Expected 'Class' column.")
@@ -80,7 +88,15 @@ def save_coefficients(model: Pipeline, feature_names: pd.Index, out_path: pathli
 
 
 def run_smote(data_path: pathlib.Path, out_dir: pathlib.Path) -> Dict:
-    """Baseline with SMOTE oversampling on training data."""
+    """Baseline with SMOTE oversampling on training data.
+
+    Args:
+        data_path: Path to input CSV.
+        out_dir: Directory to write metrics/coef files.
+
+    Returns:
+        Dict with experiment name and metrics.
+    """
     X, y = load_data(data_path)
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42, stratify=y
@@ -126,7 +142,15 @@ def run_smote(data_path: pathlib.Path, out_dir: pathlib.Path) -> Dict:
 
 
 def run_gridsearch(data_path: pathlib.Path, out_dir: pathlib.Path) -> dict:
-    """Grid search over class weights/C, pick threshold for precision>=0.9 on val."""
+    """Grid search over class weights/C, pick threshold for precision>=0.9 on val.
+
+    Args:
+        data_path: Path to input CSV.
+        out_dir: Directory to write metrics/coef files.
+
+    Returns:
+        Dict with experiment name and metrics.
+    """
     X, y = load_data(data_path)
     X_trainval, X_test, y_trainval, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42, stratify=y
@@ -199,7 +223,15 @@ def run_gridsearch(data_path: pathlib.Path, out_dir: pathlib.Path) -> dict:
 
 
 def run_baseline(data_path: pathlib.Path, out_dir: pathlib.Path) -> dict:
-    """Baseline: balanced class weight, C=1, single train/test split."""
+    """Baseline: balanced class weight, C=1, single train/test split.
+
+    Args:
+        data_path: Path to input CSV.
+        out_dir: Directory to write metrics/coef files.
+
+    Returns:
+        Dict with experiment name and metrics.
+    """
     X, y = load_data(data_path)
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42, stratify=y

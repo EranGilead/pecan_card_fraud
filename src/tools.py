@@ -14,7 +14,15 @@ def add_cost_metrics(
     amounts: Optional[pd.Series],
     threshold_used: Optional[float] = None,
 ) -> None:
-    """Update metrics dict with FP/FN counts and amount-based costs."""
+    """Attach FP/FN counts and amount-based costs to a metrics dict.
+
+    Args:
+        metrics: Mutable metrics mapping to update in-place.
+        y_true: Ground-truth labels (0/1).
+        preds: Binary predictions (0/1) at a chosen threshold.
+        amounts: Transaction amounts aligned with y_true/preds; if None, costs are skipped.
+        threshold_used: Threshold applied to generate preds (logged for reference).
+    """
     if amounts is None:
         return
     fp_mask = (preds == 1) & (y_true == 0)
@@ -47,7 +55,16 @@ def top_k_metrics(y_true: np.ndarray, y_score: np.ndarray, k: int = 100) -> Dict
 def find_threshold_for_precision(
     y_true: np.ndarray, y_score: np.ndarray, precision_target: float
 ) -> Tuple[Optional[float], float, float]:
-    """Find threshold achieving precision >= target with maximum recall."""
+    """Find threshold achieving precision >= target with maximum recall.
+
+    Args:
+        y_true: Ground-truth labels.
+        y_score: Predicted probabilities.
+        precision_target: Minimum precision to satisfy.
+
+    Returns:
+        (threshold, precision_at_thr, recall_at_thr); threshold None if unattainable.
+    """
     precision, recall, thresholds = precision_recall_curve(y_true, y_score)
     valid = np.where(precision >= precision_target)[0]
     if len(valid) == 0:
@@ -64,7 +81,18 @@ def evaluate_scores(
     amounts: Optional[pd.Series] = None,
     precision_target: Optional[float] = None,
 ) -> Dict[str, float]:
-    """Compute core metrics and optional cost accounting."""
+    """Compute core metrics (ROC/PR/top-k) plus optional thresholded metrics and costs.
+
+    Args:
+        y_true: Ground-truth labels.
+        y_score: Predicted probabilities.
+        threshold: If provided, compute precision/recall at this cutoff and costs.
+        amounts: Optional transaction amounts for cost accounting.
+        precision_target: If provided and threshold is None, find a threshold to satisfy it.
+
+    Returns:
+        Dict of metrics including AUCs, top-k, optional threshold metrics, and costs.
+    """
     metrics = {
         "roc_auc": float(roc_auc_score(y_true, y_score)),
         "pr_auc": float(average_precision_score(y_true, y_score)),
