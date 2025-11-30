@@ -154,6 +154,23 @@ def main(data_path: pathlib.Path, out_dir: pathlib.Path) -> None:
     print(f"[xgb] Saved feature importances to {out_dir / 'feature_importances.csv'}")
 
 
+def fit_and_score_xgb(
+    data_path: pathlib.Path,
+    precision_target: float = 0.9,
+) -> Tuple[XGBClassifier, pd.Series, np.ndarray, Optional[float]]:
+    """Fit XGBoost model and return (model, y_test, scores, threshold_used)."""
+    X, y = load_data(data_path)
+    X_trainval, X_test, y_trainval, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=42, stratify=y
+    )
+    X_train, X_val, y_train, y_val = train_test_split(
+        X_trainval, y_trainval, test_size=0.2, random_state=42, stratify=y_trainval
+    )
+    model, best_val = train_and_select(X_train, y_train, X_val, y_val, precision_target=precision_target)
+    scores = model.predict_proba(X_test)[:, 1]
+    return model, y_test, scores, best_val.get("threshold")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train XGBoost classifier on creditcard.csv.")
     parser.add_argument("--data-path", type=pathlib.Path, default=pathlib.Path("data/creditcard.csv"))

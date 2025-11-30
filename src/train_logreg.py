@@ -274,6 +274,82 @@ def run_all(data_path: pathlib.Path, out_dir: pathlib.Path) -> None:
     print(f"[all] Wrote combined summary to {summary_path}")
 
 
+def fit_and_score_logreg(
+    data_path: pathlib.Path,
+    mode: str = "baseline",
+    precision_target: float = 0.9,
+) -> Tuple[Pipeline, pd.Series, np.ndarray, Optional[float]]:
+    """Fit a logreg variant and return (model, y_test, scores, threshold_used).
+
+    Args:
+        data_path: Path to creditcard.csv.
+        mode: 'baseline', 'smote', or 'gridsearch'.
+        precision_target: Target precision for threshold selection in gridsearch.
+
+    Returns:
+        model: Trained pipeline.
+        y_test: Holdout labels.
+        scores: Predicted probabilities on test split.
+        threshold_used: Threshold chosen (gridsearch) or fixed (baseline/smote).
+    """
+    X, y = load_data(data_path)
+    X_trainval, X_test, y_trainval, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=42, stratify=y
+    )
+    if mode == "baseline":
+        model, _ = train_logreg(X_trainval, y_trainval, class_weight="balanced", C=1.0)
+        scores = model.predict_proba(X_test)[:, 1]
+        return model, y_test, scores, 0.5
+    if mode == "smote":
+        num_features = X.columns.tolist()
+        preprocessor = ColumnTransformer(
+            transformers=[("num", StandardScaler(), num_features)],
+            remainder="drop",
+        )
+        model = ImbPipeline(
+            steps=[
+                ("preprocess", preprocessor),
+                ("smote", SMOTE(random_state=42)),
+                (
+                    "model",
+                    LogisticRegression(
+                        penalty="l2",
+                        C=1.0,
+                        max_iter=500,
+                        class_weight=None,
+                        n_jobs=1,
+                    ),
+                ),
+            ]
+        )
+        model.fit(X_trainval, y_trainval)
+        scores = model.predict_proba(X_test)[:, 1]
+        return model, y_test, scores, 0.5
+
+    # gridsearch
+    X_train, X_val, y_train, y_val = train_test_split(
+        X_trainval, y_trainval, test_size=0.2, random_state=42, stratify=y_trainval
+    )
+    weight_grid = [1, 5, 10, 20]
+    c_grid = [0.01, 0.1, 1.0, 10.0]
+    best = {"recall": -1.0, "pr_auc": -1.0, "threshold": None, "weight": None, "C": None}
+    for w in weight_grid:
+        class_weight = {0: 1.0, 1: float(w)}
+        for c in c_grid:
+            model, _ = train_logreg(X_train, y_train, class_weight=class_weight, C=c)
+            val_scores = model.predict_proba(X_val)[:, 1]
+            thr, prec, rec = find_threshold_for_precision(
+                y_val.to_numpy(), val_scores, precision_target=precision_target
+            )
+            pr_auc_val = average_precision_score(y_val, val_scores)
+            if rec > best["recall"] or (rec == best["recall"] and pr_auc_val > best["pr_auc"]):
+                best.update({"recall": rec, "pr_auc": pr_auc_val, "threshold": thr, "weight": w, "C": c})
+    best_class_weight = {0: 1.0, 1: float(best["weight"])}
+    final_model, _ = train_logreg(X_trainval, y_trainval, class_weight=best_class_weight, C=best["C"])
+    scores = final_model.predict_proba(X_test)[:, 1]
+    return final_model, y_test, scores, best.get("threshold")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Train logistic regression on creditcard.csv (baseline or gridsearch)."
